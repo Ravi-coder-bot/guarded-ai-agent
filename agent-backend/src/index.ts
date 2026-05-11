@@ -34,14 +34,14 @@ async function main(): Promise<void> {
   // 2. Seed default policy rules (if none exist)
   seedDefaultRules();
 
-  // 3. Connect to MCP servers
-  console.log("[MCP] Initializing MCP server connections...");
-  await initMcpServers();
-
-  // 4. Express app
+  // 3. Express app
   const app = express();
   app.use(cors({ origin: FRONTEND_URL, credentials: true }));
   app.use(express.json({ limit: "2mb" }));
+
+  app.get("/", (_req, res) => {
+    res.json({ service: "guarded-ai-agent-backend", status: "ok" });
+  });
 
   // Health check
   app.get("/health", (_req, res) => {
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     res.status(500).json({ error: err.message });
   });
 
-  // 5. HTTP + WebSocket server
+  // 4. HTTP + WebSocket server
   const server = createServer(app);
   const wss = new WebSocketServer({ server, path: "/ws" });
 
@@ -104,6 +104,10 @@ async function main(): Promise<void> {
 ║  Dashboard: ${FRONTEND_URL}         ║
 ╚═══════════════════════════════════════════════╝
     `);
+    console.log("[MCP] Initializing MCP server connections...");
+    void initMcpServers().catch((err) => {
+      console.error("[MCP] Initialization failed:", err);
+    });
   });
 }
 
