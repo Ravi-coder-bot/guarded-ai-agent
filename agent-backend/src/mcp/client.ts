@@ -8,17 +8,18 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { spawnSync } from "child_process";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export interface MCPServerConfig {
   id: string;
   name: string;
-  transport: "stdio" | "sse";
+  transport: "stdio" | "sse" | "in-memory";
   // stdio
   command?: string;
   args?: string[];
@@ -26,7 +27,13 @@ export interface MCPServerConfig {
   // sse
   url?: string;
   apiKey?: string;
+  // in-memory
+  serverFactory?: () => Promise<ConnectableMcpServer> | ConnectableMcpServer;
 }
+
+type ConnectableMcpServer = {
+  connect(transport: Transport): Promise<void>;
+};
 
 export interface DiscoveredTool {
   name: string;
@@ -39,6 +46,7 @@ export interface DiscoveredTool {
 interface ServerState {
   config: MCPServerConfig;
   client: Client | null;
+  localServer?: ConnectableMcpServer;
   tools: DiscoveredTool[];
   status: "connecting" | "ready" | "degraded" | "offline";
   lastError?: string;
@@ -176,9 +184,21 @@ async function connectServer(serverId: string): Promise<void> {
         },
         ...(cwd ? { cwd } : {}),
       });
-    } else {
+    } else if (state.config.transport === "sse") {
       const url = new URL(state.config.url!);
       transport = new SSEClientTransport(url);
+    } else {
+      if (!state.config.serverFactory) {
+        throw new Error(`MCP server "${state.config.name}" is missing serverFactory`);
+      }
+
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      const localServer = await state.config.serverFactory();
+      await localServer.connect(serverTransport);
+
+      state.localServer = localServer;
+      transport = clientTransport;
     }
 
     await client.connect(transport);
@@ -266,122 +286,10 @@ function timeout(ms: number, message: string): Promise<never> {
   );
 }
 
-function isMiseManagedPath(candidate: string): boolean {
-  const normalized = candidate.replace(/\\/g, "/");
-  if (
-    normalized === "mise" ||
-    normalized.startsWith("mise/") ||
-    normalized.includes("/mise/")
-  ) {
-    return true;
-  }
-
-  try {
-    const realPath = fs.realpathSync.native(candidate).replace(/\\/g, "/");
-    return (
-      realPath === "mise" ||
-      realPath.startsWith("mise/") ||
-      realPath.includes("/mise/")
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isNodeExecutable(candidate: string): boolean {
-  try {
-    const result = spawnSync(candidate, ["-v"], {
-      stdio: "ignore",
-      windowsHide: true,
-      timeout: 2000,
-    });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
-}
-
-function resolveNodeBinary(): string {
-  const nodeCommand = process.platform === "win32" ? "node.exe" : "node";
-  const explicitCandidates = [
-    process.env["MCP_NODE_BINARY"],
-    process.env.NODE_BINARY,
-    process.env.NODE,
-  ];
-
-  for (const candidate of explicitCandidates) {
-    if (!candidate) continue;
-    if (isMiseManagedPath(candidate)) {
-      console.warn(
-        `[MCP] Ignoring mise-managed Node path from environment: ${candidate}`
-      );
-      continue;
-    }
-    if (isNodeExecutable(candidate)) {
-      console.log(`[MCP] Resolved Node binary from environment: ${candidate}`);
-      return candidate;
-    }
-    console.warn(`[MCP] Node candidate invalid: ${candidate}`);
-  }
-
-  // Railway/Nixpacks may expose Node through mise-managed absolute paths that
-  // are not stable for child processes. Prefer the PATH command so runtime PATH
-  // resolution picks the currently available Node binary.
-  if (isNodeExecutable(nodeCommand)) {
-    console.log(`[MCP] Resolved Node binary from PATH: ${nodeCommand}`);
-    return nodeCommand;
-  }
-
-  const candidates = [
-    "/usr/local/bin/node",
-    "/usr/bin/node",
-    "/bin/node",
-    process.execPath,
-    process.argv[0],
-  ];
-
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    // Skip mise-managed node paths that may not exist at runtime.
-    if (isMiseManagedPath(candidate)) {
-      console.warn(`[MCP] Skipping mise-managed node path: ${candidate}`);
-      continue;
-    }
-    if (isNodeExecutable(candidate)) {
-      console.log(`[MCP] Resolved node binary: ${candidate}`);
-      return candidate;
-    }
-    console.warn(`[MCP] Node candidate invalid: ${candidate}`);
-  }
-
-  const pathEntries = process.env.PATH?.split(path.delimiter) ?? [];
-  const nodeNames = [nodeCommand];
-
-  for (const dir of pathEntries) {
-    for (const name of nodeNames) {
-      const candidate = path.join(dir, name);
-      if (isMiseManagedPath(candidate)) {
-        console.warn(`[MCP] Skipping mise-managed node path: ${candidate}`);
-        continue;
-      }
-      if (isNodeExecutable(candidate)) {
-        console.log(`[MCP] Resolved node binary from PATH: ${candidate}`);
-        return candidate;
-      }
-    }
-  }
-
-  throw new Error(
-    "Unable to resolve a Node binary for the custom MCP server. " +
-      "Ensure Node is installed and available on PATH, or set MCP_NODE_BINARY."
-  );
-}
-
 /**
  * Initialize default MCP servers from environment.
  */
 export async function initMcpServers(): Promise<void> {
-  const nodeBin = resolveNodeBinary();
 
   // After tsc compiles src/ → dist/, __dirname is agent-backend/dist/mcp/
   // So we need ../../../ to reach the repo root, then custom-mcp-server/
@@ -398,22 +306,27 @@ export async function initMcpServers(): Promise<void> {
       "Custom MCP server build not found. Run npm run build --prefix custom-mcp-server"
     );
   }
-  const customServerCwd = path.resolve(
-    __dirname,
-    "../../../custom-mcp-server"
-  );
-
-  console.log(`[MCP] Node binary: ${nodeBin}`);
   console.log(`[MCP] Custom MCP server path: ${customServerPath}`);
 
-  // Custom MCP Server (stdio)
+  // Custom MCP Server (in-process; avoids Railway child-process Node path issues)
   await addMcpServer({
     id: "custom-notes",
     name: "Notes & Task Manager",
-    transport: "stdio",
-    command: nodeBin,
-    args: [customServerPath],
-    cwd: customServerCwd,
+    transport: "in-memory",
+    serverFactory: async () => {
+      const moduleUrl = pathToFileURL(customServerPath).href;
+      const module = (await import(moduleUrl)) as {
+        createNotesMcpServer?: () => ConnectableMcpServer;
+      };
+
+      if (!module.createNotesMcpServer) {
+        throw new Error(
+          `Custom MCP server module did not export createNotesMcpServer: ${customServerPath}`
+        );
+      }
+
+      return module.createNotesMcpServer();
+    },
   });
 
   // Remote MCP Server (SSE) — Exa Search, if API key is set

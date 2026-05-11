@@ -15,16 +15,16 @@ gh repo create guarded-ai-agent --public --source=. --push
 1. Go to railway.app → New Project → Deploy from GitHub
 2. Select your repo and keep the Railway root directory as the repository root.
    Do not set the root directory to `agent-backend`, because Railway also needs
-   `custom-mcp-server` so the backend can spawn the local MCP process.
+   `custom-mcp-server` so the backend can load the local MCP module.
 3. Set environment variables:
    - `GEMINI_API_KEY` = your key
    - `EXA_API_KEY` = your key (optional)
    - `PORT` = 3001
    - `FRONTEND_URL` = your deployed dashboard URL (add after step 4)
-   - Leave `NODE_BINARY` unset; only set `MCP_NODE_BINARY` if you have a stable custom Node path
+   - `NODE_ENV` = production
 4. Deploy → copy the Railway URL (e.g. `https://your-app.railway.app`)
 
-> Note: The custom MCP server runs as a child process spawned by the backend.
+> Note: The custom MCP server runs in-process inside the backend on Railway.
 > Both live in the same Railway service — no separate deployment needed.
 
 ### 3. Deploy dashboard on Vercel
@@ -77,7 +77,7 @@ fly deploy
 
 ## Custom MCP Server Notes
 
-The custom MCP server (`custom-mcp-server`) is spawned as a child process by the agent backend via stdio transport. When deploying:
+The custom MCP server (`custom-mcp-server`) is loaded in-process by the agent backend on Railway. When deploying:
 
 1. Build it first: `npm run build --prefix custom-mcp-server`
 2. The backend's `mcp/client.ts` resolves `custom-mcp-server/dist/index.js`

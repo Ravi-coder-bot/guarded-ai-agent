@@ -77,12 +77,13 @@ function formatNote(n: Note): string {
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 // ─── MCP Server ───────────────────────────────────────────────────────────────
-const server = new Server(
-  { name: "notes-task-manager", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
+export function createNotesMcpServer(): Server {
+  const server = new Server(
+    { name: "notes-task-manager", version: "1.0.0" },
+    { capabilities: { tools: {} } }
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     { name: "create_note", description: "Create a new note or task with title, content, tags, and priority. Returns the created note with its ID.", inputSchema: { type: "object", properties: { title: { type: "string", description: "Note title (max 200 chars)" }, content: { type: "string", description: "Note body" }, tags: { type: "array", items: { type: "string" }, description: "Optional tags" }, priority: { type: "string", enum: ["low","medium","high","urgent"], description: "Priority (default: medium)" } }, required: ["title","content"] } },
     { name: "list_notes", description: "List notes with optional filtering by status, priority, or tag. Sorted by priority.", inputSchema: { type: "object", properties: { status: { type: "string", enum: ["active","completed","archived","all"], description: "Filter by status (default: active)" }, priority: { type: "string", enum: ["low","medium","high","urgent"] }, tag: { type: "string", description: "Filter by tag" }, limit: { type: "number", description: "Max results (default: 20)" }, offset: { type: "number", description: "Pagination offset" } } } },
@@ -93,7 +94,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args = {} } = request.params;
   try {
     switch (name) {
@@ -181,6 +182,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error("[Notes MCP] Server ready on stdio");
+  return server;
+}
+
+export async function startNotesMcpServerStdio(): Promise<void> {
+  const server = createNotesMcpServer();
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("[Notes MCP] Server ready on stdio");
+}
+
+const isMainModule =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  await startNotesMcpServerStdio();
+}
