@@ -8,7 +8,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -286,6 +285,15 @@ export async function initMcpServers(): Promise<void> {
     __dirname,
     "../../../custom-mcp-server/dist/index.js"
   );
+
+  if (!fs.existsSync(customServerPath)) {
+    console.error(
+      `[MCP] Custom MCP server binary not found at: ${customServerPath}`
+    );
+    throw new Error(
+      "Custom MCP server build not found. Run npm run build --prefix custom-mcp-server"
+    );
+  }
   const customServerCwd = path.resolve(
     __dirname,
     "../../../custom-mcp-server"
