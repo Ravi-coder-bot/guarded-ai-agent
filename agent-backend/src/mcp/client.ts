@@ -8,6 +8,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -265,24 +266,35 @@ function timeout(ms: number, message: string): Promise<never> {
   );
 }
 
+function isNodeExecutable(candidate: string): boolean {
+  try {
+    const result = spawnSync(candidate, ["-v"], {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 2000,
+    });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+
 function resolveNodeBinary(): string {
   const candidates = [
+    process.env.NODE_BINARY,
+    process.env.NODE,
+    process.platform === "win32" ? "node.exe" : "node",
     process.execPath,
     process.argv[0],
-    "node",
-    process.platform === "win32" ? "node.exe" : "node",
   ];
 
   for (const candidate of candidates) {
     if (!candidate) continue;
-    try {
-      if (fs.existsSync(candidate)) {
-        console.log(`[MCP] Resolved node binary: ${candidate}`);
-        return candidate;
-      }
-    } catch {
-      // ignore filesystem errors while detecting node
+    if (isNodeExecutable(candidate)) {
+      console.log(`[MCP] Resolved node binary: ${candidate}`);
+      return candidate;
     }
+    console.warn(`[MCP] Node candidate invalid: ${candidate}`);
   }
 
   const pathEntries = process.env.PATH?.split(path.delimiter) ?? [];
@@ -291,20 +303,16 @@ function resolveNodeBinary(): string {
   for (const dir of pathEntries) {
     for (const name of nodeNames) {
       const candidate = path.join(dir, name);
-      try {
-        if (fs.existsSync(candidate)) {
-          console.log(`[MCP] Resolved node binary from PATH: ${candidate}`);
-          return candidate;
-        }
-      } catch {
-        // ignore filesystem errors while probing PATH
+      if (isNodeExecutable(candidate)) {
+        console.log(`[MCP] Resolved node binary from PATH: ${candidate}`);
+        return candidate;
       }
     }
   }
 
   throw new Error(
     "Unable to resolve a Node binary for the custom MCP server. " +
-      "Ensure Node is installed and available on PATH."
+      "Ensure Node is installed and available on PATH, or set NODE_BINARY."
   );
 }
 
