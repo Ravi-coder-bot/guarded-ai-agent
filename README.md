@@ -85,7 +85,8 @@ cp agent-backend/.env.example agent-backend/.env
 
 Edit `agent-backend/.env`:
 ```env
-ANTHROPIC_API_KEY=your_anthropic_key
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
 EXA_API_KEY=your_exa_key          # optional — remote MCP server
 PORT=3001
 FRONTEND_URL=http://localhost:5173
@@ -161,7 +162,7 @@ When a tool requires approval and no approver responds within a configurable tim
 
 ## Stack
 - **Backend**: Node.js 20+, TypeScript, Express, ws (WebSockets), better-sqlite3
-- **LLM**: Anthropic Claude (claude-sonnet-4-20250514)
+- **LLM**: Google Gemini(gemini-2.5-flash)
 - **MCP**: @modelcontextprotocol/sdk (stdio + SSE)
 - **Frontend**: React 18, Vite, Tailwind CSS
 - **Database**: SQLite (via better-sqlite3)
