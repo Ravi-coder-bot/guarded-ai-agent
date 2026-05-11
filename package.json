@@ -5,10 +5,15 @@
   "scripts": {
     "install:all": "npm install --prefix agent-backend && npm install --prefix custom-mcp-server && npm install --prefix dashboard",
     "build:all": "npm run build --prefix agent-backend && npm run build --prefix custom-mcp-server && npm run build --prefix dashboard",
+    "build:railway": "npm ci --include=dev --prefix custom-mcp-server && npm run build --prefix custom-mcp-server && npm ci --include=dev --prefix agent-backend && npm run build --prefix agent-backend",
+    "start": "node agent-backend/dist/index.js",
     "dev:backend": "npm run dev --prefix agent-backend",
     "dev:dashboard": "npm run dev --prefix dashboard",
     "dev:mcp": "npm run dev --prefix custom-mcp-server",
     "setup": "npm run install:all && npm run build:mcp",
     "build:mcp": "npm run build --prefix custom-mcp-server"
+  },
+  "engines": {
+    "node": ">=20 <23"
   }
 }

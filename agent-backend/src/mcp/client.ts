@@ -266,6 +266,28 @@ function timeout(ms: number, message: string): Promise<never> {
   );
 }
 
+function isMiseManagedPath(candidate: string): boolean {
+  const normalized = candidate.replace(/\\/g, "/");
+  if (
+    normalized === "mise" ||
+    normalized.startsWith("mise/") ||
+    normalized.includes("/mise/")
+  ) {
+    return true;
+  }
+
+  try {
+    const realPath = fs.realpathSync.native(candidate).replace(/\\/g, "/");
+    return (
+      realPath === "mise" ||
+      realPath.startsWith("mise/") ||
+      realPath.includes("/mise/")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isNodeExecutable(candidate: string): boolean {
   try {
     const result = spawnSync(candidate, ["-v"], {
@@ -280,21 +302,48 @@ function isNodeExecutable(candidate: string): boolean {
 }
 
 function resolveNodeBinary(): string {
-  const candidates = [
+  const nodeCommand = process.platform === "win32" ? "node.exe" : "node";
+  const explicitCandidates = [
+    process.env["MCP_NODE_BINARY"],
     process.env.NODE_BINARY,
     process.env.NODE,
+  ];
+
+  for (const candidate of explicitCandidates) {
+    if (!candidate) continue;
+    if (isMiseManagedPath(candidate)) {
+      console.warn(
+        `[MCP] Ignoring mise-managed Node path from environment: ${candidate}`
+      );
+      continue;
+    }
+    if (isNodeExecutable(candidate)) {
+      console.log(`[MCP] Resolved Node binary from environment: ${candidate}`);
+      return candidate;
+    }
+    console.warn(`[MCP] Node candidate invalid: ${candidate}`);
+  }
+
+  // Railway/Nixpacks may expose Node through mise-managed absolute paths that
+  // are not stable for child processes. Prefer the PATH command so runtime PATH
+  // resolution picks the currently available Node binary.
+  if (isNodeExecutable(nodeCommand)) {
+    console.log(`[MCP] Resolved Node binary from PATH: ${nodeCommand}`);
+    return nodeCommand;
+  }
+
+  const candidates = [
     "/usr/local/bin/node",
     "/usr/bin/node",
     "/bin/node",
-    process.platform === "win32" ? "node.exe" : "node",
     process.execPath,
     process.argv[0],
   ];
 
   for (const candidate of candidates) {
     if (!candidate) continue;
-    // Skip mise-managed node paths that may not exist at runtime
-    if (candidate.includes("/mise/")) {
+    // Skip mise-managed node paths that may not exist at runtime.
+    if (isMiseManagedPath(candidate)) {
       console.warn(`[MCP] Skipping mise-managed node path: ${candidate}`);
       continue;
     }
@@ -306,11 +355,15 @@ function resolveNodeBinary(): string {
   }
 
   const pathEntries = process.env.PATH?.split(path.delimiter) ?? [];
-  const nodeNames = [process.platform === "win32" ? "node.exe" : "node"];
+  const nodeNames = [nodeCommand];
 
   for (const dir of pathEntries) {
     for (const name of nodeNames) {
       const candidate = path.join(dir, name);
+      if (isMiseManagedPath(candidate)) {
+        console.warn(`[MCP] Skipping mise-managed node path: ${candidate}`);
+        continue;
+      }
       if (isNodeExecutable(candidate)) {
         console.log(`[MCP] Resolved node binary from PATH: ${candidate}`);
         return candidate;
@@ -320,7 +373,7 @@ function resolveNodeBinary(): string {
 
   throw new Error(
     "Unable to resolve a Node binary for the custom MCP server. " +
-      "Ensure Node is installed and available on PATH, or set NODE_BINARY."
+      "Ensure Node is installed and available on PATH, or set MCP_NODE_BINARY."
   );
 }
 
