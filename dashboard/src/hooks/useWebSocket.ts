@@ -18,7 +18,11 @@ export function useWebSocket(onMessage: MessageHandler) {
   useEffect(() => {
     function connect() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      const apiUrl = import.meta.env["VITE_API_URL"] ?? "";
+      const wsUrl = apiUrl
+        ? apiUrl.replace(/^https/, "wss").replace(/^http/, "ws") + "/ws"
+        : `${protocol}//${window.location.host}/ws`;
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
