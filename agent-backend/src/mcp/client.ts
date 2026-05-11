@@ -283,6 +283,9 @@ function resolveNodeBinary(): string {
   const candidates = [
     process.env.NODE_BINARY,
     process.env.NODE,
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+    "/bin/node",
     process.platform === "win32" ? "node.exe" : "node",
     process.execPath,
     process.argv[0],
