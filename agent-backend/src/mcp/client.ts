@@ -9,6 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { spawn } from "child_process";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -271,7 +272,13 @@ function timeout(ms: number, message: string): Promise<never> {
 export async function initMcpServers(): Promise<void> {
   // process.execPath = the exact node binary running this process.
   // Avoids ENOENT when Railway/nvm/mise puts node at a non-standard PATH.
-  const nodeBin = process.execPath;
+  let nodeBin = process.execPath;
+  if (!fs.existsSync(nodeBin)) {
+    console.warn(
+      `[MCP] process.execPath does not exist: ${nodeBin}. Falling back to 'node' from PATH.`
+    );
+    nodeBin = "node";
+  }
 
   // After tsc compiles src/ → dist/, __dirname is agent-backend/dist/mcp/
   // So we need ../../../ to reach the repo root, then custom-mcp-server/
