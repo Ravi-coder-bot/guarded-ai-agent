@@ -25,17 +25,6 @@ export function broadcastToAll(payload: unknown): void {
   }
 }
 
-// ─── Global error handlers ──────────────────────────────────────────────────
-process.on("uncaughtException", (err) => {
-  console.error("[FATAL] Uncaught Exception:", err);
-  process.exit(1);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[FATAL] Unhandled Rejection at:", promise, "reason:", reason);
-  process.exit(1);
-});
-
 // ─── App setup ───────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
   // 1. Init database

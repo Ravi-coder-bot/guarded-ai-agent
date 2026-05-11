@@ -8,7 +8,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -17,7 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export interface MCPServerConfig {
   id: string;
   name: string;
-  transport: "stdio" | "sse" | "streamable-http";
+  transport: "stdio" | "sse";
   // stdio
   command?: string;
   args?: string[];
@@ -175,16 +175,9 @@ async function connectServer(serverId: string): Promise<void> {
         },
         ...(cwd ? { cwd } : {}),
       });
-    } else if (state.config.transport === "sse") {
-      const url = new URL(state.config.url!);
-      transport = new SSEClientTransport(url);
     } else {
       const url = new URL(state.config.url!);
-      transport = new StreamableHTTPClientTransport(url, {
-        requestInit: state.config.apiKey
-          ? { headers: { "x-api-key": state.config.apiKey } }
-          : undefined,
-      });
+      transport = new SSEClientTransport(url);
     }
 
     await client.connect(transport);
@@ -276,30 +269,42 @@ function timeout(ms: number, message: string): Promise<never> {
  * Initialize default MCP servers from environment.
  */
 export async function initMcpServers(): Promise<void> {
+  // process.execPath = the exact node binary running this process.
+  // Avoids ENOENT when Railway/nvm/mise puts node at a non-standard PATH.
+  const nodeBin = process.execPath;
+
+  // After tsc compiles src/ → dist/, __dirname is agent-backend/dist/mcp/
+  // So we need ../../../ to reach the repo root, then custom-mcp-server/
   const customServerPath = path.resolve(
     __dirname,
     "../../../custom-mcp-server/dist/index.js"
   );
+  const customServerCwd = path.resolve(
+    __dirname,
+    "../../../custom-mcp-server"
+  );
+
+  console.log(`[MCP] Node binary: ${nodeBin}`);
+  console.log(`[MCP] Custom MCP server path: ${customServerPath}`);
 
   // Custom MCP Server (stdio)
   await addMcpServer({
     id: "custom-notes",
     name: "Notes & Task Manager",
     transport: "stdio",
-    command: process.execPath,
+    command: nodeBin,
     args: [customServerPath],
-    cwd: path.resolve(__dirname, "../../../custom-mcp-server"),
+    cwd: customServerCwd,
   });
 
   // Remote MCP Server (SSE) — Exa Search, if API key is set
-  const exaApiKey = process.env["EXA_API_KEY"];
-  if (exaApiKey && !exaApiKey.startsWith("your_")) {
+  if (process.env["EXA_API_KEY"]) {
     await addMcpServer({
       id: "exa-search",
       name: "Exa Search",
-      transport: "streamable-http",
-      url: "https://mcp.exa.ai/mcp",
-      apiKey: exaApiKey,
+      transport: "sse",
+      url: "https://mcp.exa.ai/sse",
+      apiKey: process.env["EXA_API_KEY"],
     });
   } else {
     console.log("[MCP] EXA_API_KEY not set — skipping Exa Search server");
