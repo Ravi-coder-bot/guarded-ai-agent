@@ -265,19 +265,54 @@ function timeout(ms: number, message: string): Promise<never> {
   );
 }
 
+function resolveNodeBinary(): string {
+  const candidates = [
+    process.execPath,
+    process.argv[0],
+    "node",
+    process.platform === "win32" ? "node.exe" : "node",
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      if (fs.existsSync(candidate)) {
+        console.log(`[MCP] Resolved node binary: ${candidate}`);
+        return candidate;
+      }
+    } catch {
+      // ignore filesystem errors while detecting node
+    }
+  }
+
+  const pathEntries = process.env.PATH?.split(path.delimiter) ?? [];
+  const nodeNames = [process.platform === "win32" ? "node.exe" : "node"];
+
+  for (const dir of pathEntries) {
+    for (const name of nodeNames) {
+      const candidate = path.join(dir, name);
+      try {
+        if (fs.existsSync(candidate)) {
+          console.log(`[MCP] Resolved node binary from PATH: ${candidate}`);
+          return candidate;
+        }
+      } catch {
+        // ignore filesystem errors while probing PATH
+      }
+    }
+  }
+
+  throw new Error(
+    "Unable to resolve a Node binary for the custom MCP server. " +
+      "Ensure Node is installed and available on PATH."
+  );
+}
+
 /**
  * Initialize default MCP servers from environment.
  */
 export async function initMcpServers(): Promise<void> {
-  // process.execPath = the exact node binary running this process.
-  // Avoids ENOENT when Railway/nvm/mise puts node at a non-standard PATH.
-  let nodeBin = process.execPath;
-  if (!fs.existsSync(nodeBin)) {
-    console.warn(
-      `[MCP] process.execPath does not exist: ${nodeBin}. Falling back to 'node' from PATH.`
-    );
-    nodeBin = "node";
-  }
+  const nodeBin = resolveNodeBinary();
 
   // After tsc compiles src/ → dist/, __dirname is agent-backend/dist/mcp/
   // So we need ../../../ to reach the repo root, then custom-mcp-server/
