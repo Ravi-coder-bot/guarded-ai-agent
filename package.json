@@ -1,0 +1,14 @@
+{
+  "name": "guarded-ai-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix agent-backend && npm install --prefix custom-mcp-server && npm install --prefix dashboard",
+    "build:all": "npm run build --prefix agent-backend && npm run build --prefix custom-mcp-server && npm run build --prefix dashboard",
+    "dev:backend": "npm run dev --prefix agent-backend",
+    "dev:dashboard": "npm run dev --prefix dashboard",
+    "dev:mcp": "npm run dev --prefix custom-mcp-server",
+    "setup": "npm run install:all && npm run build:mcp",
+    "build:mcp": "npm run build --prefix custom-mcp-server"
+  }
+}

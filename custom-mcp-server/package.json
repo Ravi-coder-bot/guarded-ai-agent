@@ -1,0 +1,23 @@
+{
+  "name": "custom-mcp-notes-server",
+  "version": "1.0.0",
+  "description": "Notes & Task Manager MCP Server — plug-and-play, follows MCP spec",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.15.5",
+    "typescript": "^5.4.5"
+  }
+}
