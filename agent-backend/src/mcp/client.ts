@@ -2,12 +2,13 @@
  * MCP Client Manager
  * Manages connections to multiple MCP servers.
  * Tool discovery is dynamic — no tool lists are hardcoded.
- * Supports both stdio (local processes) and SSE (remote servers).
+ * Supports stdio, in-memory, SSE, and Streamable HTTP transports.
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import fs from "fs";
@@ -19,12 +20,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export interface MCPServerConfig {
   id: string;
   name: string;
-  transport: "stdio" | "sse" | "in-memory";
+  transport: "stdio" | "sse" | "streamable-http" | "in-memory";
   // stdio
   command?: string;
   args?: string[];
   cwd?: string;
-  // sse
+  // remote
   url?: string;
   apiKey?: string;
   // in-memory
@@ -187,6 +188,9 @@ async function connectServer(serverId: string): Promise<void> {
     } else if (state.config.transport === "sse") {
       const url = new URL(state.config.url!);
       transport = new SSEClientTransport(url);
+    } else if (state.config.transport === "streamable-http") {
+      const url = new URL(state.config.url!);
+      transport = new StreamableHTTPClientTransport(url);
     } else {
       if (!state.config.serverFactory) {
         throw new Error(`MCP server "${state.config.name}" is missing serverFactory`);
@@ -286,6 +290,21 @@ function timeout(ms: number, message: string): Promise<never> {
   );
 }
 
+function buildExaMcpUrl(apiKey: string): string {
+  const url = new URL(process.env["EXA_MCP_URL"] ?? "https://mcp.exa.ai/mcp");
+
+  if (!url.searchParams.has("exaApiKey")) {
+    url.searchParams.set("exaApiKey", apiKey);
+  }
+
+  const tools = process.env["EXA_MCP_TOOLS"];
+  if (tools && !url.searchParams.has("tools")) {
+    url.searchParams.set("tools", tools);
+  }
+
+  return url.toString();
+}
+
 /**
  * Initialize default MCP servers from environment.
  */
@@ -329,13 +348,13 @@ export async function initMcpServers(): Promise<void> {
     },
   });
 
-  // Remote MCP Server (SSE) — Exa Search, if API key is set
+  // Remote MCP Server (Streamable HTTP) - Exa Search, if API key is set
   if (process.env["EXA_API_KEY"]) {
     await addMcpServer({
       id: "exa-search",
       name: "Exa Search",
-      transport: "sse",
-      url: "https://mcp.exa.ai/sse",
+      transport: "streamable-http",
+      url: buildExaMcpUrl(process.env["EXA_API_KEY"]),
       apiKey: process.env["EXA_API_KEY"],
     });
   } else {
