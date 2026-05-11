@@ -293,6 +293,11 @@ function resolveNodeBinary(): string {
 
   for (const candidate of candidates) {
     if (!candidate) continue;
+    // Skip mise-managed node paths that may not exist at runtime
+    if (candidate.includes("/mise/")) {
+      console.warn(`[MCP] Skipping mise-managed node path: ${candidate}`);
+      continue;
+    }
     if (isNodeExecutable(candidate)) {
       console.log(`[MCP] Resolved node binary: ${candidate}`);
       return candidate;
